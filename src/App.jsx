@@ -415,7 +415,7 @@ function FriendsTab({user,friends,onChange}){
   const [email,setEmail]=useState("");const [err,setErr]=useState("");const [suc,setSuc]=useState("");const [busy,setBusy]=useState(false);
   const add=async()=>{setErr("");setSuc("");setBusy(true);const t=email.trim().toLowerCase();if(!t){setErr("이메일을 입력해주세요.");setBusy(false);return;}if(t===user.email){setErr("본인을 추가할 수 없습니다.");setBusy(false);return;}if(friends.find(f=>f.email===t)){setErr("이미 추가된 친구입니다.");setBusy(false);return;}const results=await getUserByNameOrEmail(t);
 if(results.length===0){setErr("가입되지 않은 이메일 또는 이름입니다.");setBusy(false);return;}
-const found=results[0];setBusy(false);return;}await addFriend(user.uid,{friendId:found.id,name:found.name,email:found.email});const upd=await getFriends(user.uid);onChange(upd);setSuc(`${found.name}님과 친구가 되었습니다! 🎉`);setEmail("");setBusy(false);};
+const found=results[0];await addFriend(user.uid,{friendId:found.id,name:found.name,email:found.email});const upd=await getFriends(user.uid);onChange(upd);setSuc(`${found.name}님과 친구가 되었습니다! 🎉`);setEmail("");setBusy(false);};
   const remove=async(docId)=>{await removeFriend(docId);const upd=await getFriends(user.uid);onChange(upd);};
   return(
     <div className="p-4">
