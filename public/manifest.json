@@ -1,0 +1,18 @@
+{
+  "name": "CallMeet",
+  "short_name": "CallMeet",
+  "description": "AI 통화 일정 관리",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0c29",
+  "theme_color": "#6366f1",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
