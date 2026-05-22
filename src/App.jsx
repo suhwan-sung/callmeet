@@ -96,7 +96,7 @@ function AuthModal({initialMode,onLogin,onClose}){
   const doGoogle=async()=>{setBusy(true);try{const r=await signInWithPopup(auth,gProvider);await afterAuth(r.user,{provider:"google"});}catch{setErr("구글 로그인 중 오류가 발생했습니다.");}setBusy(false);};
  const doKakao=()=>{
   if(!window.Kakao?.isInitialized())window.Kakao?.init(KAKAO_KEY);
-  window.Kakao?.Auth?.authorize({redirectUri:window.location.origin});
+  window.Kakao?.Auth?.authorize({redirectUri:'https://callmeet-git-main-suhwan-sungs-projects.vercel.app'});
 };
 
   return(
