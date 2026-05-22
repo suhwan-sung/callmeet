@@ -437,7 +437,26 @@ export default function App(){
   const [tab,setTab]=useState("calendar");
   const [authMode,setAuthMode]=useState(null);
   const [ready,setReady]=useState(false);
-
+  useEffect(()=>{
+    const params=new URLSearchParams(window.location.search);
+    const code=params.get('code');
+    if(code){
+      (async()=>{
+        try{
+          const tok=await fetch(`/api/kakao-token?code=${code}`).then(r=>r.json());
+          if(tok.access_token){
+            const info=await fetch('https://kapi.kakao.com/v2/user/me',{headers:{'Authorization':`Bearer ${tok.access_token}`}}).then(r=>r.json());
+            const kid=String(info.id),nick=info.kakao_account?.profile?.nickname||'카카오사용자',email=`kakao_${kid}@callmeet.app`,pw=`kakao_${kid}_pw`;
+            let fbUser;
+            try{const r=await signInWithEmailAndPassword(auth,email,pw);fbUser=r.user;}
+            catch{const r=await createUserWithEmailAndPassword(auth,email,pw);fbUser=r.user;}
+            await saveUser(fbUser.uid,{name:nick,email,provider:'kakao',uid:fbUser.uid});
+            window.history.replaceState({},'',window.location.pathname);
+          }
+        }catch(e){console.error('카카오 로그인 오류',e);}
+      })();
+    }
+  },[]);
   useEffect(()=>{
     const unsub=onAuthStateChanged(auth,async(u)=>{
       if(u){
