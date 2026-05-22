@@ -94,10 +94,10 @@ function AuthModal({initialMode,onLogin,onClose}){
   const doLogin=async()=>{setErr("");setBusy(true);try{const r=await signInWithEmailAndPassword(auth,f.email,f.pw);await afterAuth(r.user);}catch{setErr("이메일 또는 비밀번호가 틀립니다.");}setBusy(false);};
   const doRegister=async()=>{setErr("");if(!f.name||!f.email||!f.pw)return setErr("모든 항목을 입력해주세요.");if(f.pw!==f.pw2)return setErr("비밀번호가 일치하지 않습니다.");setBusy(true);try{const r=await createUserWithEmailAndPassword(auth,f.email,f.pw);await afterAuth(r.user,{name:f.name});}catch(e){setErr(e.code==="auth/email-already-in-use"?"이미 가입된 이메일입니다.":"가입 중 오류가 발생했습니다.");}setBusy(false);};
   const doGoogle=async()=>{setBusy(true);try{const r=await signInWithPopup(auth,gProvider);await afterAuth(r.user,{provider:"google"});}catch{setErr("구글 로그인 중 오류가 발생했습니다.");}setBusy(false);};
-  const doKakao=async()=>{
-    if(!window.Kakao?.isInitialized())window.Kakao?.init(KAKAO_KEY);
-    window.Kakao?.Auth?.login({success:async(a)=>{window.Kakao.API.request({url:"/v2/user/me",success:async(res)=>{const kid=String(res.id),nick=res.kakao_account?.profile?.nickname||"카카오사용자",email=`kakao_${kid}@callmeet.app`,pw=`kakao_${kid}_secure`;try{await signInWithEmailAndPassword(auth,email,pw).then(r=>afterAuth(r.user,{name:nick,provider:"kakao"}));}catch{await createUserWithEmailAndPassword(auth,email,pw).then(r=>afterAuth(r.user,{name:nick,provider:"kakao"}));}},fail:()=>setErr("카카오 정보를 가져오지 못했습니다.")});},fail:()=>setErr("카카오 로그인 중 오류가 발생했습니다.")});
-  };
+ const doKakao=()=>{
+  if(!window.Kakao?.isInitialized())window.Kakao?.init(KAKAO_KEY);
+  window.Kakao?.Auth?.authorize({redirectUri:window.location.origin});
+};
 
   return(
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={e=>e.target===e.currentTarget&&onClose()}>
