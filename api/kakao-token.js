@@ -5,7 +5,7 @@ export default async function handler(req, res) {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       grant_type: 'authorization_code',
-      client_id: 'bee335131e093536b4ef2457fc8a1bdd',
+      client_id: '70746e7a59b4775f2771d8e75b306e50',
       redirect_uri: 'https://callmeet-git-main-suhwan-sungs-projects.vercel.app',
       code: code
     })
