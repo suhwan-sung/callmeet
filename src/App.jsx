@@ -28,16 +28,26 @@ const fmtMD=s=>{if(!s)return"";const[,mm,dd]=s.split("-");return`${+mm}/${+dd}`;
 
 // ── AI 일정 추출 ───────────────────────────────────────────────────────────
 async function aiExtract(text){
-  const today=new Date().toISOString().split("T")[0];
-  const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:`Extract agreed-upon appointments from Korean text. Today:${today}. Return ONLY raw JSON array. Schema:[{"date":"YYYY-MM-DD","time":"HH:MM or null","title":"Korean","people":"or null","location":"or null","notes":"or null"}]. Return [] if none.`,messages:[{role:"user",content:`대화:\n${text}`}]})});
-  const data=await res.json();
-  const raw=data.content?.find(b=>b.type==="text")?.text||"[]";
-  return JSON.parse(raw.replace(/```json|```/g,"").trim());
+  const res = await fetch("/api/ai-extract", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({text})
+  });
+  const data = await res.json();
+  if(data.error) throw new Error(data.error);
+  return data.result;
 }
 
 // ── Firestore CRUD ─────────────────────────────────────────────────────────
 const saveUser=async(uid,data)=>setDoc(doc(db,"users",uid),data,{merge:true});
 const getUserByEmail=async(email)=>{const q=query(collection(db,"users"),where("email","==",email));const s=await getDocs(q);return s.empty?null:{id:s.docs[0].id,...s.docs[0].data()};};
+const getUserByNameOrEmail=async(input)=>{
+  const byEmail=await getUserByEmail(input);
+  if(byEmail) return [byEmail];
+  const q=query(collection(db,"users"),where("name","==",input));
+  const s=await getDocs(q);
+  return s.docs.map(d=>({id:d.id,...d.data()}));
+};
 const addEvt=async(userId,ev)=>{const r=await addDoc(collection(db,"events"),{...ev,userId,createdAt:serverTimestamp()});return r.id;};
 const getUserEvts=async(userId)=>{const q=query(collection(db,"events"),where("userId","==",userId));const s=await getDocs(q);return s.docs.map(d=>({id:d.id,...d.data()}));};
 const delEvt=async(id)=>deleteDoc(doc(db,"events",id));
@@ -403,14 +413,16 @@ function AddTab({onAddEvents}){
 // ── 친구 탭 ───────────────────────────────────────────────────────────────
 function FriendsTab({user,friends,onChange}){
   const [email,setEmail]=useState("");const [err,setErr]=useState("");const [suc,setSuc]=useState("");const [busy,setBusy]=useState(false);
-  const add=async()=>{setErr("");setSuc("");setBusy(true);const t=email.trim().toLowerCase();if(!t){setErr("이메일을 입력해주세요.");setBusy(false);return;}if(t===user.email){setErr("본인을 추가할 수 없습니다.");setBusy(false);return;}if(friends.find(f=>f.email===t)){setErr("이미 추가된 친구입니다.");setBusy(false);return;}const found=await getUserByEmail(t);if(!found){setErr("가입되지 않은 이메일입니다.");setBusy(false);return;}await addFriend(user.uid,{friendId:found.id,name:found.name,email:found.email});const upd=await getFriends(user.uid);onChange(upd);setSuc(`${found.name}님과 친구가 되었습니다! 🎉`);setEmail("");setBusy(false);};
+  const add=async()=>{setErr("");setSuc("");setBusy(true);const t=email.trim().toLowerCase();if(!t){setErr("이메일을 입력해주세요.");setBusy(false);return;}if(t===user.email){setErr("본인을 추가할 수 없습니다.");setBusy(false);return;}if(friends.find(f=>f.email===t)){setErr("이미 추가된 친구입니다.");setBusy(false);return;}const results=await getUserByNameOrEmail(t);
+if(results.length===0){setErr("가입되지 않은 이메일 또는 이름입니다.");setBusy(false);return;}
+const found=results[0];setBusy(false);return;}await addFriend(user.uid,{friendId:found.id,name:found.name,email:found.email});const upd=await getFriends(user.uid);onChange(upd);setSuc(`${found.name}님과 친구가 되었습니다! 🎉`);setEmail("");setBusy(false);};
   const remove=async(docId)=>{await removeFriend(docId);const upd=await getFriends(user.uid);onChange(upd);};
   return(
     <div className="p-4">
       <h2 className="font-black text-gray-900 mb-4">👥 친구 관리</h2>
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
         <h3 className="font-bold text-gray-700 text-sm mb-3">친구 추가</h3>
-        <div className="flex gap-2"><input className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-50" placeholder="상대방 이메일 주소" value={email} onChange={e=>{setEmail(e.target.value);setErr("");setSuc("");}} onKeyDown={e=>e.key==="Enter"&&add()}/><button onClick={add} disabled={busy} className="px-4 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-50 shrink-0" style={{background:"linear-gradient(135deg,#6366f1,#4f46e5)"}}>{busy?"...":"추가"}</button></div>
+        <div className="flex gap-2"><input className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-50" placeholder="이메일 또는 이름으로 검색" value={email} onChange={e=>{setEmail(e.target.value);setErr("");setSuc("");}} onKeyDown={e=>e.key==="Enter"&&add()}/><button onClick={add} disabled={busy} className="px-4 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-50 shrink-0" style={{background:"linear-gradient(135deg,#6366f1,#4f46e5)"}}>{busy?"...":"추가"}</button></div>
         {err&&<p className="text-red-500 text-xs mt-2">⚠️ {err}</p>}
         {suc&&<p className="text-xs mt-2 font-medium" style={{color:"#059669"}}>✓ {suc}</p>}
       </div>
