@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword,
          GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, deleteUser } from 'firebase/auth';
+import { getMessaging, getToken } from 'firebase/messaging';
 import { getFirestore, doc, setDoc, getDoc, collection, query,
          where, getDocs, addDoc, deleteDoc, serverTimestamp, onSnapshot, orderBy } from 'firebase/firestore';
 
@@ -17,6 +18,31 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const gProvider = new GoogleAuthProvider();
+const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
+const VAPID_KEY = import.meta.env.VITE_VAPID_KEY;
+
+async function getFCMToken() {
+  try {
+    if(!messaging) return null;
+    const permission = await Notification.requestPermission();
+    if(permission !== 'granted') return null;
+    const token = await getToken(messaging, {vapidKey: VAPID_KEY});
+    return token;
+  } catch { return null; }
+}
+
+async function sendPushNotification(toUserId, title, body) {
+  try {
+    const uDoc = await getDoc(doc(db,'users',toUserId));
+    const fcmToken = uDoc.data()?.fcmToken;
+    if(!fcmToken) return;
+    await fetch('/api/send-notification', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({token:fcmToken, title, body})
+    });
+  } catch {}
+}
 const KAKAO_KEY = "70746e7a59b4775f2771d8e75b306e50";
 
 // ── 한국 공휴일 데이터 ────────────────────────────────────────────────────
@@ -936,6 +962,9 @@ export default function App(){
     setFriends(await getFriends(uData.uid));
     setRequests(await getFriendRequests(uData.uid));
     setAuthMode(null);
+    getFCMToken().then(async token=>{
+      if(token) await saveUser(uData.uid,{fcmToken:token});
+    });
     requestNotificationPermission().then(granted=>{
       if(granted)evs.filter(e=>e.notifyMinutes>0).forEach(scheduleNotification);
     });
@@ -971,9 +1000,16 @@ export default function App(){
   const delEvent=async(id)=>{await delEvt(id);setEvents(prev=>prev.filter(e=>e.id!==id));};
   const toggleComplete=async(id,completed)=>{await updEvt(id,{completed});setEvents(prev=>prev.map(e=>e.id===id?{...e,completed}:e));};
   const handleShare=async(evs,frs)=>{
-    try{
-      await shareEvts(evs,frs.map(f=>f.friendId||f.id),user.name);
-      return{success:true};
+  try{
+    await shareEvts(evs,frs.map(f=>f.friendId||f.id),user.name);
+    for(const fr of frs){
+      await sendPushNotification(
+        fr.friendId||fr.id,
+        '📅 새 일정이 공유됐습니다',
+        `${user.name}님이 ${evs.length}개의 일정을 공유했습니다`
+      );
+    }
+    return{success:true};
     }catch{return{error:"공유 중 오류가 발생했습니다."};} 
   };
   const refreshRequests=async()=>{if(user)setRequests(await getFriendRequests(user.uid));};
