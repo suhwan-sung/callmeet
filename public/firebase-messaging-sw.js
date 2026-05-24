@@ -20,31 +20,36 @@ messaging.onBackgroundMessage(payload => {
     icon: '/icon.svg',
     badge: '/icon.svg',
     vibrate: [200, 100, 200],
-    data: data
+    data: data,
+    tag: data.type || 'general'
   });
 });
 
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   const data = event.notification.data || {};
-  let url = 'https://callmeet.vercel.app/';
-
-  if(data.type === 'chat' && data.friendId) {
-    url = `https://callmeet.vercel.app/?tab=chat&friendId=${data.friendId}`;
-  } else if(data.type === 'share') {
-    url = `https://callmeet.vercel.app/?tab=shared`;
-  } else if(data.type === 'friend') {
-    url = `https://callmeet.vercel.app/?tab=friends`;
-  }
 
   event.waitUntil(
     clients.matchAll({type:'window', includeUncontrolled:true}).then(windowClients => {
-      for(const client of windowClients) {
-        if('focus' in client) {
-          client.navigate(url);
-          return client.focus();
-        }
+      if(windowClients.length > 0) {
+        const client = windowClients[0];
+        client.postMessage({
+          type: 'NAVIGATE',
+          tab: data.type === 'chat' ? 'chat'
+              : data.type === 'share' ? 'shared'
+              : data.type === 'friend' ? 'friends'
+              : 'calendar',
+          friendId: data.friendId || null
+        });
+        return client.focus();
       }
+      let url = 'https://callmeet.vercel.app/';
+      if(data.type === 'chat' && data.friendId)
+        url = `https://callmeet.vercel.app/?tab=chat&friendId=${data.friendId}`;
+      else if(data.type === 'share')
+        url = `https://callmeet.vercel.app/?tab=shared`;
+      else if(data.type === 'friend')
+        url = `https://callmeet.vercel.app/?tab=friends`;
       return clients.openWindow(url);
     })
   );
