@@ -772,9 +772,11 @@ function SharedTab({user}){
   const delOne=async(id)=>{
     try{
       await deleteDoc(doc(db,"sharedEvents",id));
-    }catch(e){console.error("삭제 오류:",e);}
+    }catch(e){
+      console.error("삭제 오류:",e);
+      alert("삭제 중 오류: "+e.message);
+    }
   };
-
   const delSelected=async()=>{
   const ids=[...selIds];
   if(ids.length===0){alert("선택된 항목이 없습니다.");return;}
@@ -1178,6 +1180,15 @@ useEffect(()=>{
     return()=>unsub();
   },[]);
 
+  useEffect(()=>{
+    if(!user?.uid)return;
+    const q=query(collection(db,"events"),where("userId","==",user.uid));
+    const unsub=onSnapshot(q,snap=>{
+      setEvents(snap.docs.map(d=>({...d.data(),id:d.id})));
+    });
+    return()=>unsub();
+  },[user?.uid]);
+         
   const handleLogin=async(uData)=>{
     if("Notification" in window && Notification.permission==="default"){
   Notification.requestPermission();
