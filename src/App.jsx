@@ -899,6 +899,13 @@ function SharedTab({user}){
 // ── 채팅 탭 ───────────────────────────────────────────────────────────────
 function ChatTab({user,friends,onAddEvents,onSendMsg}){
   const [selFriend,setSelFriend]=useState(null);
+  useEffect(()=>{
+  const savedId=sessionStorage.getItem('openChatFriendId');
+  if(savedId&&friends.length>0){
+    const fr=friends.find(f=>(f.friendId||f.id)===savedId);
+    if(fr){setSelFriend(fr);sessionStorage.removeItem('openChatFriendId');}
+    }
+  },[friends]);       
   const [msgs,setMsgs]=useState([]);
   const [input,setInput]=useState("");
   const [analyzing,setAnalyzing]=useState(false);
@@ -1091,6 +1098,18 @@ export default function App(){
   const [authMode,setAuthMode]=useState(null);
   const [ready,setReady]=useState(false);
   const [showProfile,setShowProfile]=useState(false);
+  useEffect(()=>{
+  const params=new URLSearchParams(window.location.search);
+  const tabParam=params.get('tab');
+  const friendIdParam=params.get('friendId');
+  if(tabParam){
+    setTab(tabParam);
+    if(tabParam==='chat'&&friendIdParam){
+      sessionStorage.setItem('openChatFriendId',friendIdParam);
+    }
+    window.history.replaceState({},'',window.location.pathname);
+  }
+},[]);
 
   // 카카오 콜백 처리
   useEffect(()=>{
@@ -1319,7 +1338,9 @@ useEffect(()=>{
         body:JSON.stringify({
           token:fcmToken,
           title:`💬 ${name}`,
-          body:text.length>40?text.substring(0,40)+'...':text
+          body:text.length>40?text.substring(0,40)+'...':text,
+          link:`https://callmeet.vercel.app/?tab=chat&friendId=${user.uid}`,
+          data:{type:'chat', friendId:user.uid, friendName:name}
         })
       });
     }
