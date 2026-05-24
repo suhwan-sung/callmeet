@@ -156,7 +156,14 @@ const updEvt=async(id,data)=>setDoc(doc(db,"events",id),data,{merge:true});
 const getFriends=async(userId)=>{const q=query(collection(db,"friends"),where("userId","==",userId));const s=await getDocs(q);return s.docs.map(d=>({id:d.id,...d.data()}));};
 const addFriend=async(userId,fr)=>addDoc(collection(db,"friends"),{userId,...fr,addedAt:serverTimestamp()});
 const removeFriend=async(id)=>deleteDoc(doc(db,"friends",id));
-const shareEvts=async(evs,recipIds,byName)=>{for(const rid of recipIds)for(const ev of evs)await addDoc(collection(db,"sharedEvents"),{...ev,recipientId:rid,sharedBy:byName,sharedAt:serverTimestamp(),source:"shared",completed:false});};
+const shareEvts=async(evs,recipIds,byName)=>{
+  for(const rid of recipIds){
+    for(const ev of evs){
+      await addDoc(collection(db,"sharedEvents"),{...ev,recipientId:rid,sharedBy:byName,sharedAt:serverTimestamp(),source:"shared",completed:false});
+      await addDoc(collection(db,"events"),{...ev,userId:rid,source:"shared",sharedBy:byName,createdAt:serverTimestamp(),completed:false});
+    }
+  }
+};
 const getSharedEvts=async(userId)=>{const q=query(collection(db,"sharedEvents"),where("recipientId","==",userId));const s=await getDocs(q);return s.docs.map(d=>({id:d.id,...d.data()}));};
 const getFriendRequests=async(userId)=>{const q=query(collection(db,"friendRequests"),where("toId","==",userId),where("status","==","pending"));const s=await getDocs(q);return s.docs.map(d=>({id:d.id,...d.data()}));};
 
@@ -737,7 +744,7 @@ function SharedTab({user}){
 }
 
 // ── 채팅 탭 ───────────────────────────────────────────────────────────────
-function ChatTab({user,friends,onAddEvents}){
+function ChatTab({user,friends,onAddEvents,onSendMsg}){
   const [selFriend,setSelFriend]=useState(null);
   const [msgs,setMsgs]=useState([]);
   const [input,setInput]=useState("");
@@ -759,6 +766,8 @@ function ChatTab({user,friends,onAddEvents}){
     if(!input.trim()||!chatId)return;
     const msg={text:input,from:user.uid,fromName:user.name,createdAt:serverTimestamp()};
     await addDoc(collection(db,"chats",chatId,"messages"),msg);
+    const friendId=selFriend.friendId||selFriend.id;
+    if(onSendMsg)onSendMsg(friendId,user.name,input);
     setInput("");
   };
 
@@ -828,7 +837,11 @@ function ChatTab({user,friends,onAddEvents}){
             ))}</div>
             <div className="flex gap-2">
               <button onClick={()=>setSchedulePrompt(null)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-500 font-medium">취소</button>
-              <button onClick={async()=>{await onAddEvents(schedulePrompt.map(e=>({...e,source:"message"})));setSchedulePrompt(null);}} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white" style={{background:"linear-gradient(135deg,#6366f1,#4f46e5)"}}>등록하기</button>
+              <button onClick={async()=>{
+                      const fid=selFriend?.friendId||selFriend?.id;
+                      await onAddEvents(schedulePrompt.map(e=>({...e,source:"message"})),fid);
+                      setSchedulePrompt(null);
+}} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white" style={{background:"linear-gradient(135deg,#6366f1,#4f46e5)"}}>등록하기</button>
             </div>
           </div>
         </div>
@@ -1003,11 +1016,20 @@ export default function App(){
   try{
     await shareEvts(evs,frs.map(f=>f.friendId||f.id),user.name);
     for(const fr of frs){
-      await sendPushNotification(
-        fr.friendId||fr.id,
-        '📅 새 일정이 공유됐습니다',
-        `${user.name}님이 ${evs.length}개의 일정을 공유했습니다`
-      );
+      const friendId=fr.friendId||fr.id;
+      const uDoc=await getDoc(doc(db,'users',friendId));
+      const fcmToken=uDoc.data()?.fcmToken;
+      if(fcmToken){
+        await fetch('/api/send-notification',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({
+            token:fcmToken,
+            title:'📅 새 일정이 공유됐습니다',
+            body:`${user.name}님이 ${evs.length}개의 일정을 공유했어요`
+          })
+        });
+      }
     }
     return{success:true};
     }catch{return{error:"공유 중 오류가 발생했습니다."};} 
@@ -1061,7 +1083,24 @@ export default function App(){
         {tab==="calendar"&&<CalendarTab events={events} friends={friends} onAddEv={ev=>addEvents([ev])} onEditEv={editEvent} onDelEv={delEvent} onShare={handleShare} onToggleComplete={toggleComplete}/>}
         {tab==="add"&&<AddTab onAddEvents={addEvents}/>}
         {tab==="friends"&&<FriendsTab user={user} friends={friends} onChange={setFriends} requests={requests} onRefreshRequests={refreshRequests}/>}
-        {tab==="chat"&&<ChatTab user={user} friends={friends} onAddEvents={async(evs)=>await addChatEvents(evs,selFriend?.friendId||selFriend?.id)}/>}
+        {tab==="chat"&&<ChatTab user={user} friends={friends}
+  onAddEvents={async(evs,fid)=>await addChatEvents(evs,fid)}
+  onSendMsg={async(toId,name,text)=>{
+    const uDoc=await getDoc(doc(db,'users',toId));
+    const fcmToken=uDoc.data()?.fcmToken;
+    if(fcmToken){
+      await fetch('/api/send-notification',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          token:fcmToken,
+          title:`💬 ${name}`,
+          body:text.length>40?text.substring(0,40)+'...':text
+        })
+      });
+    }
+  }}
+/>}
         {tab==="shared"&&<SharedTab user={user}/>}
       </div>
       {showProfile&&<ProfilePage user={user} onLogout={handleLogout} onClose={()=>setShowProfile(false)}/>}
