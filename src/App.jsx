@@ -161,20 +161,27 @@ const shareEvts=async(evs,recipIds,byName)=>{
     for(const ev of evs){
       const {id:_,...evData}=ev;
       await addDoc(collection(db,"sharedEvents"),{
-        ...evData,recipientId:rid,sharedBy:byName,
-        sharedAt:serverTimestamp(),source:"shared",completed:false
+        ...evData,
+        recipientId:rid,
+        sharedBy:byName,
+        sharedAt:serverTimestamp(),
+        source:"shared",
+        completed:false
       });
       const evQ=query(collection(db,"events"),
         where("userId","==",rid),
-        where("source","==","shared"),
         where("title","==",ev.title),
         where("date","==",ev.date)
       );
       const existing=await getDocs(evQ);
       if(existing.empty){
         await addDoc(collection(db,"events"),{
-          ...evData,userId:rid,source:"shared",
-          sharedBy:byName,createdAt:serverTimestamp(),completed:false
+          ...evData,
+          userId:rid,
+          source:"shared",
+          sharedBy:byName,
+          createdAt:serverTimestamp(),
+          completed:false
         });
       }
     }
@@ -755,7 +762,7 @@ function SharedTab({user}){
     if(!user?.uid)return;
     const q=query(collection(db,"sharedEvents"),where("recipientId","==",user.uid));
     const unsub=onSnapshot(q,snap=>{
-      const s=snap.docs.map(d=>({id:d.id,...d.data()}));
+      const s=snap.docs.map(d=>({...d.data(),id:d.id}));
       setShared(s.sort((a,b)=>(a.date||"").localeCompare(b.date||"")));
       setLoading(false);
     });
