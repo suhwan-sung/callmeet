@@ -13,10 +13,39 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage(payload => {
-  const { title, body, icon } = payload.notification;
+  const { title, body } = payload.notification;
+  const data = payload.data || {};
   self.registration.showNotification(title, {
     body,
-    icon: icon || '/icon.svg',
-    badge: '/icon.svg'
+    icon: '/icon.svg',
+    badge: '/icon.svg',
+    vibrate: [200, 100, 200],
+    data: data
   });
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const data = event.notification.data || {};
+  let url = 'https://callmeet.vercel.app/';
+
+  if(data.type === 'chat' && data.friendId) {
+    url = `https://callmeet.vercel.app/?tab=chat&friendId=${data.friendId}`;
+  } else if(data.type === 'share') {
+    url = `https://callmeet.vercel.app/?tab=shared`;
+  } else if(data.type === 'friend') {
+    url = `https://callmeet.vercel.app/?tab=friends`;
+  }
+
+  event.waitUntil(
+    clients.matchAll({type:'window', includeUncontrolled:true}).then(windowClients => {
+      for(const client of windowClients) {
+        if('focus' in client) {
+          client.navigate(url);
+          return client.focus();
+        }
+      }
+      return clients.openWindow(url);
+    })
+  );
 });
