@@ -748,6 +748,8 @@ function SharedTab({user}){
   const [loading,setLoading]=useState(true);
   const [selIds,setSelIds]=useState(new Set());
   const [selectMode,setSelectMode]=useState(false);
+  const [confirmDel,setConfirmDel]=useState(false);
+  const [deleting,setDeleting]=useState(false);
 
   useEffect(()=>{
     if(!user?.uid)return;
@@ -760,31 +762,33 @@ function SharedTab({user}){
     return()=>unsub();
   },[user?.uid]);
 
-  const delShared=async(id,ev)=>{
-    await deleteDoc(doc(db,"sharedEvents",id));
-    if(ev){
-      const evQ=query(collection(db,"events"),
-        where("userId","==",user.uid),
-        where("source","==","shared"),
-        where("title","==",ev.title),
-        where("date","==",ev.date)
-      );
-      const snap=await getDocs(evQ);
-      for(const d of snap.docs)await deleteDoc(d.ref);
-    }
+  const delOne=async(id)=>{
+    try{
+      await deleteDoc(doc(db,"sharedEvents",id));
+    }catch(e){console.error("삭제 오류:",e);}
   };
 
   const delSelected=async()=>{
-    if(selIds.size===0)return;
-    if(!window.confirm(`선택한 ${selIds.size}개의 일정을 삭제할까요?`))return;
-    const toDelete=shared.filter(e=>selIds.has(e.id));
-    for(const ev of toDelete)await delShared(ev.id,ev);
+    setDeleting(true);
+    try{
+      const toDelete=shared.filter(e=>selIds.has(e.id));
+      for(const ev of toDelete){
+        await deleteDoc(doc(db,"sharedEvents",ev.id));
+      }
+    }catch(e){
+      console.error("선택 삭제 오류:",e);
+      alert("삭제 중 오류가 발생했습니다.");
+    }
     setSelIds(new Set());
     setSelectMode(false);
+    setConfirmDel(false);
+    setDeleting(false);
   };
 
   const toggleComplete=async(id,completed)=>{
-    await setDoc(doc(db,"sharedEvents",id),{completed},{merge:true});
+    try{
+      await setDoc(doc(db,"sharedEvents",id),{completed},{merge:true});
+    }catch(e){console.error(e);}
   };
 
   const togSel=id=>{
@@ -799,10 +803,31 @@ function SharedTab({user}){
   };
 
   if(loading)return<div className="flex items-center justify-center py-20 text-gray-400 text-sm">불러오는 중...</div>;
-  if(shared.length===0)return<div className="flex flex-col items-center justify-center py-20 text-gray-400 px-6 text-center"><div className="text-5xl mb-3">📭</div><p className="text-sm font-medium text-gray-500">공유받은 일정 없음</p></div>;
+  if(shared.length===0)return(
+    <div className="flex flex-col items-center justify-center py-20 text-gray-400 px-6 text-center">
+      <div className="text-5xl mb-3">📭</div>
+      <p className="text-sm font-medium text-gray-500">공유받은 일정 없음</p>
+    </div>
+  );
 
   return(
     <div className="p-4">
+      {/* 커스텀 삭제 확인 다이얼로그 */}
+      {confirmDel&&(
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4">
+          <div className="bg-white rounded-2xl p-5 w-full max-w-xs shadow-2xl">
+            <h3 className="font-black text-gray-900 mb-2">삭제 확인</h3>
+            <p className="text-sm text-gray-500 mb-4">선택한 <span className="font-bold text-red-500">{selIds.size}개</span>의 일정을 삭제할까요?</p>
+            <div className="flex gap-2">
+              <button onClick={()=>setConfirmDel(false)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-500">취소</button>
+              <button onClick={delSelected} disabled={deleting} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-50" style={{background:"#ef4444"}}>
+                {deleting?"삭제 중...":"삭제"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-black text-gray-900">📬 공유받은 일정
           <span className="ml-2 text-xs px-2 py-0.5 rounded-full font-semibold" style={{background:"#fff7ed",color:"#ea580c"}}>{shared.length}</span>
@@ -810,7 +835,7 @@ function SharedTab({user}){
         <button onClick={()=>{setSelectMode(!selectMode);setSelIds(new Set());}}
           className="text-xs px-3 py-1.5 rounded-lg font-bold border"
           style={selectMode?{background:"#fee2e2",color:"#ef4444",borderColor:"#fca5a5"}:{background:"#f1f5f9",color:"#475569",borderColor:"#e2e8f0"}}>
-          {selectMode?"선택 취소":"선택 삭제"}
+          {selectMode?"취소":"선택 삭제"}
         </button>
       </div>
 
@@ -822,7 +847,8 @@ function SharedTab({user}){
             </button>
             <span className="text-sm font-bold text-white">{selIds.size}개 선택됨</span>
           </div>
-          <button onClick={delSelected} disabled={selIds.size===0}
+          <button onClick={()=>{if(selIds.size>0)setConfirmDel(true);}}
+            disabled={selIds.size===0}
             className="text-xs bg-white font-bold px-3 py-1.5 rounded-lg disabled:opacity-40"
             style={{color:"#ef4444"}}>
             🗑️ 삭제
@@ -835,7 +861,7 @@ function SharedTab({user}){
           <div key={ev.id} className="flex items-start gap-2">
             {selectMode&&(
               <button onClick={()=>togSel(ev.id)}
-                className="mt-2.5 w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0"
+                className="mt-2.5 w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all"
                 style={selIds.has(ev.id)?{background:"#ef4444",borderColor:"#ef4444"}:{borderColor:"#d1d5db"}}>
                 {selIds.has(ev.id)&&<svg className="w-3 h-3 text-white" viewBox="0 0 12 10" fill="none"><path d="M1 5l3.5 3.5L11 1" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
               </button>
@@ -845,7 +871,7 @@ function SharedTab({user}){
               <EventCard
                 ev={{...ev,source:"shared"}}
                 onToggleComplete={()=>toggleComplete(ev.id,!ev.completed)}
-                onDelete={!selectMode?()=>delShared(ev.id,ev):undefined}
+                onDelete={!selectMode?()=>delOne(ev.id):undefined}
               />
             </div>
           </div>
