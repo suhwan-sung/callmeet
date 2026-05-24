@@ -159,8 +159,24 @@ const removeFriend=async(id)=>deleteDoc(doc(db,"friends",id));
 const shareEvts=async(evs,recipIds,byName)=>{
   for(const rid of recipIds){
     for(const ev of evs){
-      await addDoc(collection(db,"sharedEvents"),{...ev,recipientId:rid,sharedBy:byName,sharedAt:serverTimestamp(),source:"shared",completed:false});
-      await addDoc(collection(db,"events"),{...ev,userId:rid,source:"shared",sharedBy:byName,createdAt:serverTimestamp(),completed:false});
+      const {id:_,...evData}=ev;
+      await addDoc(collection(db,"sharedEvents"),{
+        ...evData,recipientId:rid,sharedBy:byName,
+        sharedAt:serverTimestamp(),source:"shared",completed:false
+      });
+      const evQ=query(collection(db,"events"),
+        where("userId","==",rid),
+        where("source","==","shared"),
+        where("title","==",ev.title),
+        where("date","==",ev.date)
+      );
+      const existing=await getDocs(evQ);
+      if(existing.empty){
+        await addDoc(collection(db,"events"),{
+          ...evData,userId:rid,source:"shared",
+          sharedBy:byName,createdAt:serverTimestamp(),completed:false
+        });
+      }
     }
   }
 };
@@ -733,31 +749,42 @@ function SharedTab({user}){
   const [selIds,setSelIds]=useState(new Set());
   const [selectMode,setSelectMode]=useState(false);
 
-  useEffect(()=>{(async()=>{
-    const s=await getSharedEvts(user.uid);
-    setShared(s.sort((a,b)=>(a.date||"").localeCompare(b.date||"")));
-    setLoading(false);
-  })();},[user.uid]);
+  useEffect(()=>{
+    if(!user?.uid)return;
+    const q=query(collection(db,"sharedEvents"),where("recipientId","==",user.uid));
+    const unsub=onSnapshot(q,snap=>{
+      const s=snap.docs.map(d=>({id:d.id,...d.data()}));
+      setShared(s.sort((a,b)=>(a.date||"").localeCompare(b.date||"")));
+      setLoading(false);
+    });
+    return()=>unsub();
+  },[user?.uid]);
 
-  const delShared=async(id)=>{
+  const delShared=async(id,ev)=>{
     await deleteDoc(doc(db,"sharedEvents",id));
-    setShared(prev=>prev.filter(e=>e.id!==id));
+    if(ev){
+      const evQ=query(collection(db,"events"),
+        where("userId","==",user.uid),
+        where("source","==","shared"),
+        where("title","==",ev.title),
+        where("date","==",ev.date)
+      );
+      const snap=await getDocs(evQ);
+      for(const d of snap.docs)await deleteDoc(d.ref);
+    }
   };
 
   const delSelected=async()=>{
     if(selIds.size===0)return;
     if(!window.confirm(`선택한 ${selIds.size}개의 일정을 삭제할까요?`))return;
-    for(const id of selIds){
-      await deleteDoc(doc(db,"sharedEvents",id));
-    }
-    setShared(prev=>prev.filter(e=>!selIds.has(e.id)));
+    const toDelete=shared.filter(e=>selIds.has(e.id));
+    for(const ev of toDelete)await delShared(ev.id,ev);
     setSelIds(new Set());
     setSelectMode(false);
   };
 
   const toggleComplete=async(id,completed)=>{
     await setDoc(doc(db,"sharedEvents",id),{completed},{merge:true});
-    setShared(prev=>prev.map(e=>e.id===id?{...e,completed}:e));
   };
 
   const togSel=id=>{
@@ -818,7 +845,7 @@ function SharedTab({user}){
               <EventCard
                 ev={{...ev,source:"shared"}}
                 onToggleComplete={()=>toggleComplete(ev.id,!ev.completed)}
-                onDelete={!selectMode?()=>delShared(ev.id):undefined}
+                onDelete={!selectMode?()=>delShared(ev.id,ev):undefined}
               />
             </div>
           </div>
