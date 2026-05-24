@@ -769,21 +769,27 @@ function SharedTab({user}){
   };
 
   const delSelected=async()=>{
-    setDeleting(true);
+  const ids=[...selIds];
+  if(ids.length===0){alert("선택된 항목이 없습니다.");return;}
+  setDeleting(true);
+  let success=0;
+  for(const id of ids){
     try{
-      const toDelete=shared.filter(e=>selIds.has(e.id));
-      for(const ev of toDelete){
-        await deleteDoc(doc(db,"sharedEvents",ev.id));
-      }
+      await deleteDoc(doc(db,"sharedEvents",id));
+      success++;
+      console.log("삭제성공:",id);
     }catch(e){
-      console.error("선택 삭제 오류:",e);
-      alert("삭제 중 오류가 발생했습니다.");
+      console.error("삭제실패:",id,e.code,e.message);
     }
-    setSelIds(new Set());
-    setSelectMode(false);
-    setConfirmDel(false);
-    setDeleting(false);
-  };
+  }
+  if(success===0){
+    alert("삭제에 실패했습니다. 콘솔을 확인해주세요.");
+  }
+  setSelIds(new Set());
+  setSelectMode(false);
+  setConfirmDel(false);
+  setDeleting(false);
+};
 
   const toggleComplete=async(id,completed)=>{
     try{
