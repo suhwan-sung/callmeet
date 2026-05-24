@@ -756,7 +756,20 @@ function ChatTab({user,friends,onAddEvents,onSendMsg}){
   useEffect(()=>{
     if(!chatId)return;
     const q=query(collection(db,"chats",chatId,"messages"),orderBy("createdAt","asc"));
-    const unsub=onSnapshot(q,snap=>{setMsgs(snap.docs.map(d=>({id:d.id,...d.data()})));});
+    const unsub=onSnapshot(q,snap=>{
+    const newMsgs=snap.docs.map(d=>({id:d.id,...d.data()}));
+    const prev=msgs.length;
+    setMsgs(newMsgs);
+    if(newMsgs.length>prev){
+      const last=newMsgs[newMsgs.length-1];
+      if(last.from!==user.uid && Notification.permission==="granted"){
+        new Notification(`💬 ${last.fromName}`,{
+          body:last.text,
+          icon:"/icon.svg"
+        });
+      }
+    }
+  });
     return()=>unsub();
   },[chatId]);
 
@@ -947,7 +960,53 @@ export default function App(){
       })();
     }
   },[]);
+// 공유받은 일정 실시간 알림
+useEffect(()=>{
+  if(!user)return;
+  const q=query(collection(db,"sharedEvents"),
+    where("recipientId","==",user.uid),
+    where("sharedAt",">=",new Date(Date.now()-5000))
+  );
+  const unsub=onSnapshot(q,snap=>{
+    snap.docChanges().forEach(change=>{
+      if(change.type==="added"){
+        const ev=change.doc.data();
+        if(Notification.permission==="granted"){
+          new Notification("📅 새 일정이 공유됐습니다",{
+            body:`${ev.sharedBy}님이 "${ev.title}" 일정을 공유했어요`,
+            icon:"/icon.svg"
+          });
+        }
+      }
+    });
+  });
+  return()=>unsub();
+},[user]);
 
+// 친구 요청 실시간 알림
+useEffect(()=>{
+  if(!user)return;
+  const q=query(collection(db,"friendRequests"),
+    where("toId","==",user.uid),
+    where("status","==","pending")
+  );
+  const unsub=onSnapshot(q,snap=>{
+    snap.docChanges().forEach(change=>{
+      if(change.type==="added"){
+        const req=change.doc.data();
+        if(Notification.permission==="granted"){
+          new Notification("👥 친구 요청이 왔습니다",{
+            body:`${req.fromName}님이 친구 요청을 보냈어요`,
+            icon:"/icon.svg"
+          });
+        }
+        setRequests(prev=>[...prev,{id:change.doc.id,...req}]);
+      }
+    });
+  });
+  return()=>unsub();
+},[user]);
+         
   useEffect(()=>{
     const unsub=onAuthStateChanged(auth,async(u)=>{
       if(u){
@@ -969,6 +1028,9 @@ export default function App(){
   },[]);
 
   const handleLogin=async(uData)=>{
+    if("Notification" in window && Notification.permission==="default"){
+  Notification.requestPermission();
+    }
     setUser(uData);
     const evs=await getUserEvts(uData.uid);
     setEvents(evs);
