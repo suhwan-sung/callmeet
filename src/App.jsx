@@ -728,19 +728,104 @@ function FriendsTab({user,friends,onChange,requests,onRefreshRequests}){
 
 // ── 공유함 탭 ─────────────────────────────────────────────────────────────
 function SharedTab({user}){
-  const [shared,setShared]=useState([]);const [loading,setLoading]=useState(true);
-  useEffect(()=>{(async()=>{const s=await getSharedEvts(user.uid);setShared(s.sort((a,b)=>(a.date||"").localeCompare(b.date||"")));setLoading(false);})();},[user.uid]);
-  const delShared=async(id)=>{await deleteDoc(doc(db,"sharedEvents",id));setShared(prev=>prev.filter(e=>e.id!==id));};
-  const toggleComplete=async(id,completed)=>{await setDoc(doc(db,"sharedEvents",id),{completed},{merge:true});setShared(prev=>prev.map(e=>e.id===id?{...e,completed}:e));};
+  const [shared,setShared]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [selIds,setSelIds]=useState(new Set());
+  const [selectMode,setSelectMode]=useState(false);
+
+  useEffect(()=>{(async()=>{
+    const s=await getSharedEvts(user.uid);
+    setShared(s.sort((a,b)=>(a.date||"").localeCompare(b.date||"")));
+    setLoading(false);
+  })();},[user.uid]);
+
+  const delShared=async(id)=>{
+    await deleteDoc(doc(db,"sharedEvents",id));
+    setShared(prev=>prev.filter(e=>e.id!==id));
+  };
+
+  const delSelected=async()=>{
+    if(selIds.size===0)return;
+    if(!window.confirm(`선택한 ${selIds.size}개의 일정을 삭제할까요?`))return;
+    for(const id of selIds){
+      await deleteDoc(doc(db,"sharedEvents",id));
+    }
+    setShared(prev=>prev.filter(e=>!selIds.has(e.id)));
+    setSelIds(new Set());
+    setSelectMode(false);
+  };
+
+  const toggleComplete=async(id,completed)=>{
+    await setDoc(doc(db,"sharedEvents",id),{completed},{merge:true});
+    setShared(prev=>prev.map(e=>e.id===id?{...e,completed}:e));
+  };
+
+  const togSel=id=>{
+    const s=new Set(selIds);
+    s.has(id)?s.delete(id):s.add(id);
+    setSelIds(s);
+  };
+
+  const selAll=()=>{
+    if(selIds.size===shared.length)setSelIds(new Set());
+    else setSelIds(new Set(shared.map(e=>e.id)));
+  };
+
   if(loading)return<div className="flex items-center justify-center py-20 text-gray-400 text-sm">불러오는 중...</div>;
   if(shared.length===0)return<div className="flex flex-col items-center justify-center py-20 text-gray-400 px-6 text-center"><div className="text-5xl mb-3">📭</div><p className="text-sm font-medium text-gray-500">공유받은 일정 없음</p></div>;
-  return(<div className="p-4">
-    <h2 className="font-black text-gray-900 mb-4">📬 공유받은 일정 <span className="ml-2 text-xs px-2 py-0.5 rounded-full font-semibold" style={{background:"#fff7ed",color:"#ea580c"}}>{shared.length}</span></h2>
-    <div className="space-y-1.5">{shared.map((ev,i)=><div key={i} className="flex items-start gap-2">
-      <span className="text-xs text-gray-400 w-9 shrink-0 pt-2.5 text-right font-medium">{fmtMD(ev.date)}</span>
-      <div className="flex-1"><EventCard ev={{...ev,source:"shared"}} onToggleComplete={()=>toggleComplete(ev.id,!ev.completed)} onDelete={ev.completed?()=>delShared(ev.id):undefined}/></div>
-    </div>)}</div>
-  </div>);
+
+  return(
+    <div className="p-4">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-black text-gray-900">📬 공유받은 일정
+          <span className="ml-2 text-xs px-2 py-0.5 rounded-full font-semibold" style={{background:"#fff7ed",color:"#ea580c"}}>{shared.length}</span>
+        </h2>
+        <button onClick={()=>{setSelectMode(!selectMode);setSelIds(new Set());}}
+          className="text-xs px-3 py-1.5 rounded-lg font-bold border"
+          style={selectMode?{background:"#fee2e2",color:"#ef4444",borderColor:"#fca5a5"}:{background:"#f1f5f9",color:"#475569",borderColor:"#e2e8f0"}}>
+          {selectMode?"선택 취소":"선택 삭제"}
+        </button>
+      </div>
+
+      {selectMode&&(
+        <div className="rounded-2xl p-3 mb-3 flex items-center justify-between" style={{background:"linear-gradient(135deg,#ef4444,#dc2626)"}}>
+          <div className="flex items-center gap-3">
+            <button onClick={selAll} className="text-xs bg-white/20 text-white px-2 py-1 rounded-lg font-bold">
+              {selIds.size===shared.length?"전체해제":"전체선택"}
+            </button>
+            <span className="text-sm font-bold text-white">{selIds.size}개 선택됨</span>
+          </div>
+          <button onClick={delSelected} disabled={selIds.size===0}
+            className="text-xs bg-white font-bold px-3 py-1.5 rounded-lg disabled:opacity-40"
+            style={{color:"#ef4444"}}>
+            🗑️ 삭제
+          </button>
+        </div>
+      )}
+
+      <div className="space-y-1.5">
+        {shared.map((ev)=>(
+          <div key={ev.id} className="flex items-start gap-2">
+            {selectMode&&(
+              <button onClick={()=>togSel(ev.id)}
+                className="mt-2.5 w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0"
+                style={selIds.has(ev.id)?{background:"#ef4444",borderColor:"#ef4444"}:{borderColor:"#d1d5db"}}>
+                {selIds.has(ev.id)&&<svg className="w-3 h-3 text-white" viewBox="0 0 12 10" fill="none"><path d="M1 5l3.5 3.5L11 1" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+              </button>
+            )}
+            <span className="text-xs text-gray-400 w-9 shrink-0 pt-2.5 text-right font-medium">{fmtMD(ev.date)}</span>
+            <div className="flex-1">
+              <EventCard
+                ev={{...ev,source:"shared"}}
+                onToggleComplete={()=>toggleComplete(ev.id,!ev.completed)}
+                onDelete={!selectMode?()=>delShared(ev.id):undefined}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // ── 채팅 탭 ───────────────────────────────────────────────────────────────
