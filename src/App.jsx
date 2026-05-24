@@ -914,6 +914,19 @@ function ChatTab({user,friends,onAddEvents,onSendMsg}){
   const chatId=selFriend?[user.uid,selFriend.friendId||selFriend.id].sort().join("_"):null;
 
   useEffect(()=>{
+    const savedId=sessionStorage.getItem('openChatFriendId');
+    if(!savedId)return;
+    if(friends.length===0)return;
+    const fr=friends.find(f=>
+      (f.friendId===savedId)||(f.id===savedId)
+    );
+    if(fr){
+      setSelFriend(fr);
+      sessionStorage.removeItem('openChatFriendId');
+    }
+  },[friends]);       
+
+  useEffect(()=>{
     if(!chatId)return;
     const q=query(collection(db,"chats",chatId,"messages"),orderBy("createdAt","asc"));
     const unsub=onSnapshot(q,snap=>{
@@ -1098,6 +1111,31 @@ export default function App(){
   const [authMode,setAuthMode]=useState(null);
   const [ready,setReady]=useState(false);
   const [showProfile,setShowProfile]=useState(false);
+  useEffect(()=>{
+  if(!navigator.serviceWorker)return;
+  const handler=event=>{
+    const msg=event.data;
+    if(!msg||msg.type!=='NAVIGATE')return;
+    setTab(msg.tab||'calendar');
+    if(msg.tab==='chat'&&msg.friendId){
+      sessionStorage.setItem('openChatFriendId',msg.friendId);
+    }
+  };
+  navigator.serviceWorker.addEventListener('message',handler);
+  return()=>navigator.serviceWorker.removeEventListener('message',handler);
+},[]);   
+  useEffect(()=>{
+  const params=new URLSearchParams(window.location.search);
+  const tabParam=params.get('tab');
+  const friendIdParam=params.get('friendId');
+  if(tabParam){
+    setTab(tabParam);
+    if(tabParam==='chat'&&friendIdParam){
+      sessionStorage.setItem('openChatFriendId',friendIdParam);
+    }
+    window.history.replaceState({},'',window.location.pathname);
+  }
+},[]);       
   useEffect(()=>{
   const params=new URLSearchParams(window.location.search);
   const tabParam=params.get('tab');
